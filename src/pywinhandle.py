@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 from ctypes import *
 from ctypes.wintypes import *
 
@@ -129,7 +130,7 @@ class OBJECT_TYPE_INFORMATION(Structure):
     ]
 
 
-def query_handle_info():
+def query_system_handle_information():
     current_length = 0x10000
     while True:
         if current_length > 0x4000000:
@@ -152,15 +153,6 @@ def query_handle_info():
             continue
         else:
             return None
-
-
-def duplicate_object(source_process_handle, source_handle):
-    h = HANDLE()
-    status = ntdll.NtDuplicateObject(source_process_handle, source_handle, current_process, byref(h), 0, 0, DUPLICATE_SAME_ACCESS | DUPLICATE_SAME_ATTRIBUTES)
-    if status == STATUS_SUCCESS:
-        return h
-    else:
-        return None
 
 
 def query_object_basic_info(h):
@@ -199,51 +191,57 @@ def query_object_type_info(h, length):
         return None
 
 
-def find_handles(pids=None, names=None, close=False):
-    res = []
-    handle_info = query_handle_info()
-    handle_list = handle_info.Handles[:handle_info.HandleCount]
-    for handle in handle_list:
-        handle_value = handle.HandleValue
-        unique_process_id = handle.UniqueProcessId
-        handle_name = None
-        handle_type = None
-        if pids and unique_process_id not in pids:
+def duplicate_object(source_process_handle, source_handle):
+    h = HANDLE()
+    status = ntdll.NtDuplicateObject(source_process_handle, source_handle, current_process, byref(h), 0, 0, DUPLICATE_SAME_ACCESS | DUPLICATE_SAME_ATTRIBUTES)
+    if status == STATUS_SUCCESS:
+        return h
+    else:
+        return None
+
+
+def find_handles(process_ids=None, handle_names=None):
+    result = []
+    system_info = query_system_handle_information()
+    for i in range(system_info.HandleCount):
+        handle_info = system_info.Handles[i]
+        handle = handle_info.HandleValue
+        process_id = handle_info.UniqueProcessId
+        if process_ids and process_id not in process_ids:
             continue
         try:
-            source_process = OpenProcess(PROCESS_ALL_ACCESS | PROCESS_DUP_HANDLE | PROCESS_SUSPEND_RESUME, False, unique_process_id)
+            source_process = OpenProcess(PROCESS_ALL_ACCESS | PROCESS_DUP_HANDLE | PROCESS_SUSPEND_RESUME, False, process_id)
         except:
             continue
-        duplicated_handle = duplicate_object(source_process.handle, handle_value)
+        handle_name = None
+        handle_type = None
+        duplicated_handle = duplicate_object(source_process.handle, handle)
         if duplicated_handle:
             basic_info = query_object_basic_info(duplicated_handle)
             if basic_info:
-                handle_name_size = basic_info.NameInfoSize
-                handle_type_size = basic_info.TypeInfoSize
-                if handle_name_size > 0:
-                    name_info = query_object_name_info(duplicated_handle, handle_name_size)
+                if basic_info.NameInfoSize > 0:
+                    name_info = query_object_name_info(duplicated_handle, basic_info.NameInfoSize)
                     if name_info:
                         handle_name = name_info.Name.Buffer[0]
-                if handle_type_size > 0:
-                    type_info = query_object_type_info(duplicated_handle, handle_type_size)
+                if basic_info.TypeInfoSize > 0:
+                    type_info = query_object_type_info(duplicated_handle, basic_info.TypeInfoSize)
                     if type_info:
                         handle_type = type_info.TypeName.Buffer[0]
-        if names:
+        if handle_names:
             if not handle_name:
                 continue
             matched = False
-            for n in names:
-                if n in handle_name:
+            for target in handle_names:
+                if target == handle_name or target in handle_name:
                     matched = True
                     break
             if not matched:
                 continue
-            if close:
-                h_process = OpenProcess(PROCESS_DUP_HANDLE, False, unique_process_id)
-                DuplicateHandle(h_process, handle_value, 0, 0, 0, DUPLICATE_CLOSE_SOURCE)
-                CloseHandle(h_process)
-        res.append({'pid': unique_process_id,
-                    'handle': handle_value,
-                    'name': handle_name,
-                    'type': handle_type})
-    return res
+        result.append({'process_id': process_id, 'handle': handle, 'name': handle_name, 'type': handle_type})
+    return result
+
+
+def close_handle(process_id, handle):
+    process = OpenProcess(PROCESS_DUP_HANDLE, False, process_id)
+    DuplicateHandle(process, handle, 0, 0, 0, DUPLICATE_CLOSE_SOURCE)
+    CloseHandle(process)
