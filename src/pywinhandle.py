@@ -200,6 +200,10 @@ def duplicate_object(source_process_handle, source_handle):
         return None
 
 
+def close(handle):
+    return ntdll.NtClose(handle)
+
+
 def find_handles(process_ids=None, handle_names=None):
     result = []
     system_info = query_system_handle_information()
@@ -227,6 +231,7 @@ def find_handles(process_ids=None, handle_names=None):
                     type_info = query_object_type_info(duplicated_handle, basic_info.TypeInfoSize)
                     if type_info:
                         handle_type = type_info.TypeName.Buffer[0]
+            close(duplicated_handle)
         if handle_names:
             if not handle_name:
                 continue
@@ -237,7 +242,7 @@ def find_handles(process_ids=None, handle_names=None):
                     break
             if not matched:
                 continue
-        result.append({'process_id': process_id, 'handle': handle, 'name': handle_name, 'type': handle_type})
+        result.append(dict(process_id=process_id, handle=handle, name=handle_name, type=handle_type))
     return result
 
 
