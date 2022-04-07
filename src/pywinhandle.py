@@ -246,7 +246,15 @@ def find_handles(process_ids=None, handle_names=None):
     return result
 
 
-def close_handle(process_id, handle):
-    process = OpenProcess(PROCESS_DUP_HANDLE, False, process_id)
-    DuplicateHandle(process, handle, 0, 0, 0, DUPLICATE_CLOSE_SOURCE)
-    CloseHandle(process)
+def close_handles(handles):
+    processes = {}
+    for h in handles:
+        process_id = h['process_id']
+        handle = h['handle']
+        process = processes.get(process_id)
+        if not process:
+            process = OpenProcess(PROCESS_DUP_HANDLE, False, process_id)
+            processes[process_id] = process
+        DuplicateHandle(process, handle, 0, 0, 0, DUPLICATE_CLOSE_SOURCE)
+    for p in processes.values():
+        CloseHandle(p)
