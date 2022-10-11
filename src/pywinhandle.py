@@ -207,6 +207,8 @@ def close(handle):
 def find_handles(process_ids=None, handle_names=None):
     result = []
     system_info = query_system_handle_information()
+    if system_info.HandleCount is None:
+        return result
     for i in range(system_info.HandleCount):
         handle_info = system_info.Handles[i]
         handle = handle_info.HandleValue
